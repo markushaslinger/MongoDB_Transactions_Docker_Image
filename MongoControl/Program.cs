@@ -3,6 +3,7 @@ using CliWrap;
 
 const string ConfigFilePath = "/etc/mongod.conf.orig";
 const string DataDir = "/var/lib/mongodb";
+const string ReplicationSetName = "rs0";
 const string Header = """
 
 ___  ___                       ____________            _ _   _       _____                              _   _                 
@@ -38,17 +39,7 @@ PrintBlock("Step 5: Waiting for DB process to come alive");
 await Task.Delay(TimeSpan.FromSeconds(4));
 
 PrintBlock("Step 6: Initializing replication set");
-var attemptCnt = 0;
-var done = false;
-do {
-    done = await RunCommand("mongosh", """--eval "rs.initiate();" """);
-    attemptCnt++;
-
-    if (!done){
-        Console.WriteLine("Retry...");
-        await Task.Delay(TimeSpan.FromSeconds(2));
-    }
-} while (!done && attemptCnt < 4);
+await InitReplicationSet();
 
 PrintBlock("Done, DB should now accept connections and allow transactions");
 
@@ -56,6 +47,38 @@ while (true)
 {
     await Task.Delay(TimeSpan.FromMinutes(1));
     Console.WriteLine($"Still here {DateTime.Now}");
+}
+
+async Task InitReplicationSet()
+{
+    async Task<bool> AlreadyConfigured() 
+    {
+        const string ReplicationSetIndicator = $"set: '{ReplicationSetName}'";
+        var (success, outStr) = await RunCommand("mongosh", """--eval "rs.status();" """);
+        return success && outStr.Contains(ReplicationSetIndicator);
+    }
+
+    async Task PerformSetup()
+    {
+        const int MaxAttempts = 4;
+        var attemptCnt = 0;
+        var done = false;
+        do {
+            (done, _) = await RunCommand("mongosh", """--eval "rs.initiate();" """);
+            attemptCnt++;
+
+            if (!done && attemptCnt <= MaxAttempts){
+                Console.WriteLine($"Retry {attemptCnt}/{MaxAttempts}...");
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+        } while (!done && attemptCnt < MaxAttempts);
+    }
+
+    if (await AlreadyConfigured()){
+        return;
+    }
+
+    await PerformSetup();
 }
 
 static void PrintBlock(string text)
@@ -70,7 +93,6 @@ static void PrintBlock(string text)
 
 async Task PatchMongoConfigFile()
 {
-    const string ReplicationSetName = "rs0";
     var allText = await File.ReadAllTextAsync(ConfigFilePath);
     if (allText.Contains(ReplicationSetName)){
         return;
@@ -82,7 +104,7 @@ async Task PatchMongoConfigFile()
     await File.WriteAllTextAsync(ConfigFilePath, allText);
 }
 
-async Task<bool> RunCommand(string cmd, string args)
+async Task<CmdResult> RunCommand(string cmd, string args)
 {
     var outSink = new StringBuilder();
     var error = false;
@@ -101,9 +123,11 @@ async Task<bool> RunCommand(string cmd, string args)
         error = true;
     }
 
-    var outLines = outSink.ToString().Split(Environment.NewLine)
-        .Select(l => $"{new string(' ', 2)}> {l}");
-    Console.WriteLine(string.Join(Environment.NewLine, outLines));
+    var outLines = outSink.ToString().Split(Environment.NewLine);
+    Console.WriteLine(string.Join(Environment.NewLine, 
+    outLines.Select(l => $"{new string(' ', 2)}> {l}")));
 
-    return !error;
+    return new (!error, outLines);
 }
+
+readonly record struct CmdResult(bool Success, IReadOnlyList<string> FullOutput);
