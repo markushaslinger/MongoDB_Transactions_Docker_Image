@@ -16,7 +16,7 @@ ___  ___                       ____________            _ _   _       _____      
 
 """;
 
-Console.WriteLine(Header);
+Console.WriteLine($"{Environment.NewLine}{Header}");
 PrintBlock("Attempting to start MongoDB in a single replica mode with transactions enabled...");
 
 PrintBlock("Step 1: patching Mongo config file to allow replication set rs0");
@@ -38,7 +38,17 @@ PrintBlock("Step 5: Waiting for DB process to come alive");
 await Task.Delay(TimeSpan.FromSeconds(4));
 
 PrintBlock("Step 6: Initializing replication set");
-await RunCommand("mongosh", """--eval "rs.initiate();" """);
+var attemptCnt = 0;
+var done = false;
+do {
+    done = await RunCommand("mongosh", """--eval "rs.initiate();" """);
+    attemptCnt++;
+
+    if (!done){
+        Console.WriteLine("Retry...");
+        await Task.Delay(TimeSpan.FromSeconds(2));
+    }
+} while (!done && attemptCnt < 4);
 
 PrintBlock("Done, DB should now accept connections and allow transactions");
 
@@ -60,15 +70,22 @@ static void PrintBlock(string text)
 
 async Task PatchMongoConfigFile()
 {
+    const string ReplicationSetName = "rs0";
     var allText = await File.ReadAllTextAsync(ConfigFilePath);
+    if (allText.Contains(ReplicationSetName)){
+        return;
+    }
+
+    // Container started for first time, patch file
     allText = allText.Replace("#replication:", 
-        $$"""replication:{{Environment.NewLine}}  replSetName: "rs0" """);
+        $$"""replication:{{Environment.NewLine}}  replSetName: "{{ReplicationSetName}}" """);
     await File.WriteAllTextAsync(ConfigFilePath, allText);
 }
 
-async Task RunCommand(string cmd, string args)
+async Task<bool> RunCommand(string cmd, string args)
 {
     var outSink = new StringBuilder();
+    var error = false;
     try
     {
         await Cli.Wrap(cmd)
@@ -76,14 +93,17 @@ async Task RunCommand(string cmd, string args)
             .WithStandardOutputPipe(PipeTarget.ToStringBuilder(outSink))
             .WithStandardErrorPipe(PipeTarget.ToStringBuilder(outSink))
             .WithValidation(CommandResultValidation.ZeroExitCode)
-            .ExecuteAsync();
+            .ExecuteAsync();        
     }
     catch (Exception ex)
     {
         outSink.Append(ex);
+        error = true;
     }
 
     var outLines = outSink.ToString().Split(Environment.NewLine)
         .Select(l => $"{new string(' ', 2)}> {l}");
     Console.WriteLine(string.Join(Environment.NewLine, outLines));
+
+    return !error;
 }
