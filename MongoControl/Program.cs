@@ -55,7 +55,7 @@ async Task InitReplicationSet()
     {
         const string ReplicationSetIndicator = $"set: '{ReplicationSetName}'";
         var (success, outStr) = await RunCommand("mongosh", """--eval "rs.status();" """);
-        return success && outStr.Contains(ReplicationSetIndicator);
+        return success && outStr.Any(l => l.Contains(ReplicationSetIndicator));
     }
 
     async Task PerformSetup()
@@ -74,7 +74,8 @@ async Task InitReplicationSet()
         } while (!done && attemptCnt < MaxAttempts);
     }
 
-    if (await AlreadyConfigured()){
+    if (await AlreadyConfigured())
+    {
         return;
     }
 
