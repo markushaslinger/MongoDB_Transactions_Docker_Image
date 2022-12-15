@@ -3,7 +3,7 @@ EXPOSE 27017
 
 FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /src
-RUN apt update && apt install -y gcc 
+RUN apt update && apt install -y clang zlib1g-dev 
 COPY ["MongoControl/MongoControl.csproj", "MongoControl/"]
 RUN dotnet restore "MongoControl/MongoControl.csproj"
 COPY . .
