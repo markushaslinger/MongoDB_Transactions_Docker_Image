@@ -7,10 +7,10 @@ COPY ["MongoControl/MongoControl.csproj", "MongoControl/"]
 RUN dotnet restore "MongoControl/MongoControl.csproj"
 COPY . .
 WORKDIR "/src/MongoControl"
-RUN dotnet build "MongoControl.csproj" -c Release -r linux-x64 -o /app/build -p:PublishTrimmed=true -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained true
+RUN dotnet build "MongoControl.csproj" -c Release -r linux-x64 -o /app/build -p:PublishAot=true
 
 FROM build AS publish
-RUN dotnet publish "MongoControl.csproj" -c Release -r linux-x64 -o /app/publish -p:PublishTrimmed=true -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained true
+RUN dotnet publish "MongoControl.csproj" -c Release -r linux-x64 -o /app/publish -p:PublishAot=true
 
 
 FROM base AS final
