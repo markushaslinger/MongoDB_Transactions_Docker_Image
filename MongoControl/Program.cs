@@ -49,16 +49,16 @@ while (true)
     Console.WriteLine($"Still here {DateTime.Now}");
 }
 
-async Task InitReplicationSet()
+async ValueTask InitReplicationSet()
 {
-    async Task<bool> AlreadyConfigured() 
+    async ValueTask<bool> AlreadyConfigured() 
     {
         const string ReplicationSetIndicator = $"set: '{ReplicationSetName}'";
         var (success, outStr) = await RunCommand("mongosh", """--eval "rs.status();" """);
         return success && outStr.Any(l => l.Contains(ReplicationSetIndicator));
     }
 
-    async Task PerformSetup()
+    async ValueTask PerformSetup()
     {
         const int MaxAttempts = 4;
         var attemptCnt = 0;
@@ -74,12 +74,10 @@ async Task InitReplicationSet()
         } while (!done && attemptCnt < MaxAttempts);
     }
 
-    if (await AlreadyConfigured())
+    if (!(await AlreadyConfigured()))
     {
-        return;
-    }
-
-    await PerformSetup();
+        await PerformSetup();
+    }    
 }
 
 static void PrintBlock(string text)
@@ -92,7 +90,7 @@ static void PrintBlock(string text)
     Console.WriteLine();
 }
 
-async Task PatchMongoConfigFile()
+async ValueTask PatchMongoConfigFile()
 {
     var allText = await File.ReadAllTextAsync(ConfigFilePath);
     if (allText.Contains(ReplicationSetName)){
@@ -105,7 +103,7 @@ async Task PatchMongoConfigFile()
     await File.WriteAllTextAsync(ConfigFilePath, allText);
 }
 
-async Task<CmdResult> RunCommand(string cmd, string args)
+async ValueTask<CmdResult> RunCommand(string cmd, string args)
 {
     var outSink = new StringBuilder();
     var error = false;
